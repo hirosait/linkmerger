@@ -1,14 +1,17 @@
-import copy
 from fiona import collection, open
 from shapely.geometry import mapping, shape
-from shapely import ops
 # import numpy as np
 
-# Path
+# Path setting
+#  new link file
+newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
+
+# link shape
 # linkShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-link.shp"
 linkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link.shp"
-newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
 # linkShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-link.shp"
+
+# node shape
 # nodeShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-node.shp"
 # nodeShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-node.shp"
 nodeShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-node.shp"
@@ -34,6 +37,7 @@ def check_attributes(f, t, attributes):
 
 def reverse_link(link):
 
+    # 正順1,3 <=> 逆順2,4
     if link['properties']['oneway_c'] == 1:
         link['properties']['oneway_c'] = 3
     elif link['properties']['oneway_c'] == 3:
@@ -48,6 +52,7 @@ def reverse_link(link):
     elif link['properties']['linkdir_c'] == 2:
         link['properties']['linkdir_c'] = 1
 
+    # coordinatesを逆順に
     link['properties']['coordinates'] = link['properties']['coordinates'][::-1]
     return link
 
