@@ -1,4 +1,5 @@
 #-*- using:utf-8 -*-
+import collections
 import logging
 import sys
 import time
@@ -12,16 +13,19 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 # Path setting
 #  new link file
 newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
+# newLinkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo_new.shp"
 
 # link shape
 # linkShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-link.shp"
-linkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link.shp"
 # linkShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-link.shp"
+# linkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link.shp"
+linkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo.shp"
 
 # node shape
 # nodeShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-node.shp"
 # nodeShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-node.shp"
-nodeShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-node.shp"
+# nodeShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-node.shp"
+nodeShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_node_tokyo.shp"
 
 # new objectid 30,000,000からスタート
 newobjectid = 30000000
@@ -29,6 +33,7 @@ newobjectid = 30000000
 from_node_links = {}
 to_node_links = {}
 newlinks = []
+all_nodes = []
 
 # リンク接合時に値が同一であるべき属性
 checkAttributes = ('roadcls_c', 'navicls_c', 'linkcls_c', 'width_c', 'nopass_c', 'oneway_c', 'lane_count',
@@ -134,21 +139,6 @@ def merge_links(a, b, node):
     return a
 
 
-def write_link_shape_file(f):
-    with open(linkShapeFile, 'r') as source:
-        with open(newLinkShapeFile, 'w', **source.meta) as sink:
-            for f in source:
-                try:
-                    geom = shape(f['geometry'])
-                    if not geom.is_valid:
-                        geom = geom.buffer(0.0)
-                    f['geometry'] = mapping(geom)
-                    sink.write(f)
-
-                except Exception:
-                    print(f"Error on {f['properties']['objectid']}")
-
-
 def get_link(node):
     # 接合対象のリンクを特定し、辞書から削除
     if node in from_node_links.keys():
@@ -175,18 +165,24 @@ def main():
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.open(linkShapeFile, "r") as fl:
         for feature in fl:
+            all_nodes.append(feature['properties']['fromnodeid'])
+            all_nodes.append(feature['properties']['tonodeid'])
             from_node_id = feature['properties']['fromnodeid']
             from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
             to_node_id = feature['properties']['tonodeid']
             to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
             all_link_count = all_link_count + 1
 
+        # 2つのリンクが接続されているノードのobjectid属性を抽出
+        c = collections.Counter(all_nodes)
+        crossing_nodes = [k for k, v in c.items() if v == 2]
+
         # connlink=2のノードに接続しているリンクを接合する
         with fiona.open(nodeShapeFile, "r") as fn:
             with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
                 for feature in fn:
-                    connlink = feature['properties']['connlink']
-                    if connlink == 2:
+                    nodeid = feature['properties']['objectid']
+                    if nodeid in crossing_nodes:
                         nodeid = feature['properties']['objectid']
                         from_link, to_link = get_link(nodeid)
                         if check_attributes(from_link, to_link, checkAttributes):
