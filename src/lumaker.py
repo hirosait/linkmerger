@@ -32,8 +32,8 @@ newobjectid = 30000000
 
 from_node_links = {}
 to_node_links = {}
-newlinks = []
-all_nodes = []
+newlinks = collections.deque()
+all_nodes = collections.deque()
 
 # リンク接合時に値が同一であるべき属性
 checkAttributes = ('roadcls_c', 'navicls_c', 'linkcls_c', 'width_c', 'nopass_c', 'oneway_c', 'lane_count',
@@ -151,10 +151,13 @@ def get_link(node):
 
 
 def remove_link(f, t):
-    if f in newlinks:
-        newlinks.remove(f)
-    if t in newlinks:
-        newlinks.remove(t)
+    global newlinks
+    newlinks = [x for x in newlinks if not x in (f, t)]
+
+
+def progress(p, l):
+    sys.stdout.write("\r%d / 100" %(int(p * 100 / (l - 1))))
+    sys.stdout.flush()
 
 
 def main():
@@ -196,7 +199,9 @@ def main():
                             merged_link_count = merged_link_count + 1
                             # print(f"  tolink:{tolink}")
                             # print(f" newlink:{newlink}")
-
+                            progress(merged_link_count, all_link_count)
+                            # if merged_link_count == 500:
+                            #     exit()
                 try:
                     f.writerecords(newlinks)
                 except Exception as e:
