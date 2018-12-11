@@ -26,8 +26,8 @@ nodeShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-node.shp"
 # new objectid 30,000,000からスタート
 newobjectid = 30000000
 
-fromNodeLinks = {}
-toNodeLinks = {}
+from_node_links = {}
+to_node_links = {}
 
 # リンク接合時に値が同一であるべき属性
 checkAttributes = ('roadcls_c', 'navicls_c', 'linkcls_c', 'width_c', 'nopass_c', 'oneway_c', 'lane_count',
@@ -101,13 +101,13 @@ def merge_links(a, b, node):
         newfromnodeid = aNodes[1]
         newtonodeid = bNodes[1]
 
-    # -a-> n -b->  =>  keep
+    # -a-> n -b->  or <-b- n <-a- =>  keep
     elif aNodePos == 1 and bNodePos == 0:
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[1]
         newc.extend(ac)
         newc.extend(bc)
-    # <-a- n <-b- => keep
+    # <-a- n <-b- => or -b-> n -a-> keep
     elif aNodePos == 0 and bNodePos == 1:
         newfromnodeid = bNodes[0]
         newtonodeid = aNodes[1]
@@ -148,17 +148,18 @@ def write_link_shape_file(f):
 
 def main():
 
-    allLinkCount = 0
-    mergedLinkCount = 0
+    all_link_count = 0
+    merged_link_count = 0
+    newlinks = []
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.collection(linkShapeFile, "r") as fl:
         for feature in fl:
-            fromNodeId = feature['properties']['fromnodeid']
-            fromNodeLinks[fromNodeId] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            toNodeId = feature['properties']['tonodeid']
-            toNodeLinks[toNodeId] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            allLinkCount = allLinkCount + 1
+            from_node_id = feature['properties']['fromnodeid']
+            from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+            to_node_id = feature['properties']['tonodeid']
+            to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+            all_link_count = all_link_count + 1
 
         # connlink=2のノードに接続しているリンクを接合する
         with fiona.collection(nodeShapeFile, "r") as fn:
@@ -166,26 +167,38 @@ def main():
                 for feature in fn:
                     connlink = feature['properties']['connlink']
                     if connlink == 2:
-                        nodeId = feature['properties']['objectid']
+                        nodeid = feature['properties']['objectid']
+                        if nodeid == 1187139:
+                            print('k')
+                        if nodeid == 11566761:
+                            print('j')
                         # 接合対象のリンクを特定し、辞書から削除
-                        if nodeId in fromNodeLinks.keys():
-                            fromLink = fromNodeLinks.pop(nodeId)
-                            # print(f"fromLink:{fromLink}")
-                            if nodeId in toNodeLinks.keys():
-                                toLink = toNodeLinks.pop(nodeId)
-                                if check_attributes(fromLink, toLink, checkAttributes):
-                                    newLink = merge_links(fromLink, toLink, nodeId)
-                                    fromLink[newLink['properties']['objectid']] = newLink
-                                    toLink[newLink['properties']['objectid']] = newLink
-                                    mergedLinkCount = mergedLinkCount + 1
-                                    # print(f"  toLink:{toLink}")
-                                    # print(f" newLink:{newLink}")
-                                    try:
-                                        f.write(newLink)
-                                    except Exception as e:
-                                        logging.exception(f"Error writing feature {newlink[['properties']['objectid']]}:{e}")
+                        if nodeid in from_node_links.keys():
+                            from_link = from_node_links.pop(nodeid)
+                            # print(f"fromlink:{fromlink}")
+                            if nodeid in to_node_links.keys():
+                                to_link = to_node_links.pop(nodeid)
+                                if check_attributes(from_link, to_link, checkAttributes):
+                                    if from_link in newlinks:
+                                        newlinks.remove(from_link)
+                                    if to_link in newlinks:
+                                        newlinks.remove(to_link)
+                                    newlink = merge_links(from_link, to_link, nodeid)
+                                    newlinks.append(newlink)
+                                    new_from_node_id = newlink['properties']['fromnodeid']
+                                    new_to_node_id = newlink['properties']['tonodeid']
+                                    from_node_links[new_from_node_id] = newlink
+                                    to_node_links[new_to_node_id] = newlink
+                                    merged_link_count = merged_link_count + 1
+                                    # print(f"  tolink:{tolink}")
+                                    # print(f" newlink:{newlink}")
 
-        print(f"Finished.  All Links counts: {allLinkCount}, Generated LUs: {mergedLinkCount}")
+                try:
+                    f.writerecords(newlinks)
+                except Exception as e:
+                    logging.exception(f"Error writing feature {newlink[['properties']['objectid']]}:{e}")
+
+                print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
 
 if __name__ == '__main__':
