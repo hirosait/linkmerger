@@ -12,8 +12,8 @@ logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
 # Path setting
 #  new link file
-newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
-# newLinkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo_new.shp"
+# newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
+newLinkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo_new.shp"
 
 # link shape
 # linkShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-link.shp"
@@ -77,9 +77,26 @@ def reverse_link(link):
     return link
 
 
+def flatten(nested_list):
+    # フラットなリストとフリンジを用意
+    flat_list = []
+    fringe = [nested_list]
+    while len(fringe) > 0:
+        node = fringe.pop(0)
+        # ノードがリストであれば子要素をフリンジに追加
+        # リストでなければそのままフラットリストに追加
+        if isinstance(node, list):
+            fringe = node + fringe
+        else:
+            flat_list.append(node)
+
+    return flat_list
+
+
 # リンクを接合
 def merge_links(a, b, node):
-
+    if a == 3204825:
+        print('here')
     # 新しいobjectid
     global newobjectid
     if newobjectid is not 30000000:
@@ -135,7 +152,7 @@ def merge_links(a, b, node):
     a['properties']['objectid'] = newobjectid
     a['properties']['fromnodeid'] = newfromnodeid
     a['properties']['tonodeid'] = newtonodeid
-    a['geometry']['coordinates'] = newc
+    a['geometry']['coordinates'] = flatten(newc)
     return a
 
 
@@ -153,11 +170,6 @@ def get_link(node):
 def remove_link(f, t):
     global newlinks
     newlinks = [x for x in newlinks if not x in (f, t)]
-
-
-def progress(p, l):
-    sys.stdout.write("\r%d / 100" %(int(p * 100 / (l - 1))))
-    sys.stdout.flush()
 
 
 def main():
@@ -199,13 +211,17 @@ def main():
                             merged_link_count = merged_link_count + 1
                             # print(f"  tolink:{tolink}")
                             # print(f" newlink:{newlink}")
-                            progress(merged_link_count, all_link_count)
                             # if merged_link_count == 500:
                             #     exit()
                 try:
-                    f.writerecords(newlinks)
+                    print('start writing')
+                    # f.writerecords(newlinks)
+                    for r in newlinks:
+                        print(r)
+                        f.write(r)
+
                 except Exception as e:
-                    logging.exception(f"Error writing feature {newlink[['properties']['objectid']]}:{e}")
+                    logging.exception(f"Error writing r {r}:{e}")
 
                 print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
