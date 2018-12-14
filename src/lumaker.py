@@ -93,10 +93,27 @@ def flatten(nested_list):
     return flat_list
 
 
+# ジオメトリLineStringを結合し、MultiLineStringにする
+def merge_linstrings(first, second):
+
+    first_coordinates = []
+    second_coordinates = []
+
+    if first['geometry']['type'] == 'LineString':
+        first_coordinates.append(first['geometry']['coordinates'])
+    else:
+        first_coordinates = first['geometry']['coordinates']
+    if second['geometry']['type'] == 'LineString':
+        second_coordinates.append(second['geometry']['coordinates'])
+    else:
+        second_coordinates = second['geometry']['coordinates']
+
+    first_coordinates.append(second_coordinates)
+    return first_coordinates
+
+
 # リンクを接合
 def merge_links(a, b, node):
-    if a == 3204825:
-        print('here')
     # 新しいobjectid
     global newobjectid
     if newobjectid is not 30000000:
@@ -110,8 +127,6 @@ def merge_links(a, b, node):
 
     # coordinates
     newc = []
-    ac = a['geometry']['coordinates']
-    bc = b['geometry']['coordinates']
 
     # 両リンクの向きを確認 同一方向に
     # <-a- n -b->  =>  -a-> n -b->
@@ -119,9 +134,7 @@ def merge_links(a, b, node):
         a = reverse_link(a)
         bc.reverse()
         # shape
-        for pos in bc:
-            newc.extend(pos)
-        newc.extend(ac)
+        newc = merge_linstrings(b, a)
         # from, to
         newfromnodeid = aNodes[1]
         newtonodeid = bNodes[1]
@@ -130,24 +143,23 @@ def merge_links(a, b, node):
     elif aNodePos == 1 and bNodePos == 0:
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[1]
-        newc.extend(ac)
-        newc.extend(bc)
+        newc = merge_linstrings(a, b)
     # <-a- n <-b- => or -b-> n -a-> keep
     elif aNodePos == 0 and bNodePos == 1:
         newfromnodeid = bNodes[0]
         newtonodeid = aNodes[1]
-        newc.extend(bc)
-        newc.extend(ac)
+        newc = merge_linstrings(b, a)
     # -a-> n <-b-  =>  -a-> n -b->
     elif aNodePos == 1 and bNodePos == 1:
         b = reverse_link(b)
         bc.reverse()
         # shape
-        newc.extend(ac)
-        for pos in bc:
-            newc.extend(pos)
+        newc = merge_linstrings(a, b)
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
+
+    if isinstance(newc[0], list):
+        a['geometry']['type'] = 'MultiLineStrings'
 
     a['properties']['objectid'] = newobjectid
     a['properties']['fromnodeid'] = newfromnodeid
