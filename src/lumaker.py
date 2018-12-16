@@ -100,15 +100,15 @@ def merge_linstrings(first, second):
     second_coordinates = []
 
     if first['geometry']['type'] == 'LineString':
-        first_coordinates.append(first['geometry']['coordinates'])
+        first_coordinates.extend(first['geometry']['coordinates'])
     else:
         first_coordinates = first['geometry']['coordinates']
     if second['geometry']['type'] == 'LineString':
-        second_coordinates.append(second['geometry']['coordinates'])
+        second_coordinates.extend(second['geometry']['coordinates'])
     else:
         second_coordinates = second['geometry']['coordinates']
 
-    first_coordinates.append(second_coordinates)
+    first_coordinates.extend(second_coordinates)
     return first_coordinates
 
 
@@ -160,6 +160,8 @@ def merge_links(a, b, node):
 
     if isinstance(newc[0], list):
         a['geometry']['type'] = 'MultiLineStrings'
+    else:
+        print('tis')
 
     a['properties']['objectid'] = newobjectid
     a['properties']['fromnodeid'] = newfromnodeid
