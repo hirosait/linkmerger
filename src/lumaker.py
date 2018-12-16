@@ -116,8 +116,6 @@ def merge_linstrings(first, second):
 def merge_links(a, b, node):
     # 新しいobjectid
     global newobjectid
-    if newobjectid is not 30000000:
-        newobjectid = newobjectid = newobjectid + 1
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -157,11 +155,6 @@ def merge_links(a, b, node):
         newc = merge_linstrings(a, b)
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
-
-    if isinstance(newc[0], list):
-        a['geometry']['type'] = 'MultiLineStrings'
-    else:
-        print('tis')
 
     a['properties']['objectid'] = newobjectid
     a['properties']['fromnodeid'] = newfromnodeid
@@ -229,10 +222,9 @@ def main():
                             #     exit()
                 try:
                     print('start writing')
-                    # f.writerecords(newlinks)
-                    for r in newlinks:
-                        print(r)
-                        f.write(r)
+                    f.writerecords(newlinks)
+                    # for r in newlinks:
+                    #     f.write(r)
 
                 except Exception as e:
                     logging.exception(f"Error writing r {r}:{e}")
