@@ -226,13 +226,17 @@ def main():
 
         print('start merging')
         with futures.ProcessPoolExecutor() as executor:
+
             with fiona.open(nodeShapeFile, "r") as fn:
                 with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                    newlinks = [executor.submit(make_lu, feature) for feature in fn]
+                    for feature in fn:
+                        result = executor.submit(make_lu, feature)
+                        if result:
+                            newlinks.append(result)
                     try:
                         print('start writing')
                         # f.writerecords(newlinks)
-                        for r in newlinks:
+                        for r in futures.as_completed(newlinks):
                             f.write(r.result())
 
                     except Exception as e:
