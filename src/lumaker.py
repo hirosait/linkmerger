@@ -10,22 +10,22 @@ from shapely.geometry import mapping, shape
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
+base_dir = "C:/ICP/qgis/projects/"
+# base_dir = "C:/qgis/ICP/qgis/projects/"
+# base_dir = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/"
+
 # Path setting
 #  new link file
-# newLinkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link-new.shp"
-newLinkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo_new.shp"
+# newLinkShapeFile = base_dir + "minato-ku/minato-link-new.shp"
+newLinkShapeFile = base_dir + "/tokyo/road_link_tokyo_new.shp"
 
 # link shape
-# linkShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-link.shp"
-# linkShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-link.shp"
-# linkShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-link.shp"
-linkShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_link_tokyo.shp"
+# linkShapeFile = base_dir + "minato-ku/minato-link.shp"
+linkShapeFile = base_dir + "tokyo/road_link_tokyo.shp"
 
 # node shape
-# nodeShapeFile = "C:\ICP\qgis\projects\minato-ku\minato-node.shp"
-# nodeShapeFile = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/minato-ku/minato-node.shp"
-# nodeShapeFile = "C:\qgis\ICP\qgis\projects\minato-ku\minato-node.shp"
-nodeShapeFile = r"C:\qgis\ICP\qgis\projects\tokyo\road_node_tokyo.shp"
+# nodeShapeFile = base_dir + "minato-ku/minato-node.shp"
+nodeShapeFile = base_dir + "tokyo/road_node_tokyo.shp"
 
 # new objectid 30,000,000からスタート
 newobjectid = 30000000
@@ -96,26 +96,37 @@ def flatten(nested_list):
 # ジオメトリLineStringを結合し、MultiLineStringにする
 def merge_linstrings(first, second):
 
-    first_coordinates = []
-    second_coordinates = []
+    new_coordinates = []
 
-    if first['geometry']['type'] == 'LineString':
-        first_coordinates.extend(first['geometry']['coordinates'])
-    else:
-        first_coordinates = first['geometry']['coordinates']
-    if second['geometry']['type'] == 'LineString':
-        second_coordinates.extend(second['geometry']['coordinates'])
-    else:
-        second_coordinates = second['geometry']['coordinates']
+    first_geometry = first['geometry']
+    second_geometry = second['geometry']
 
-    first_coordinates.extend(second_coordinates)
-    return first_coordinates
+    if first_geometry['type'] == 'MultiLineString' or second_geometry['type'] == 'MultiLineString':
+        if first_geometry['type'] == 'LineString':
+            new_coordinates.append([first_geometry['coordinates']])
+        else:
+            new_coordinates.append(first_geometry['coordinates'])
+
+        if second_geometry['type'] == 'LineString':
+            new_coordinates.append([second_geometry['coordinates']])
+        else:
+            new_coordinates.append(second_geometry['coordinates'])
+    else:
+        new_coordinates.extend(first_geometry['coordinates'])
+        new_coordinates.extend(second_geometry['coordinates'])
+
+    return new_coordinates
 
 
 # リンクを接合
 def merge_links(a, b, node):
     # 新しいobjectid
     global newobjectid
+    multi = False
+    if a['geometry']['type'] == 'MultiLineString':
+        multi = True
+    if b['geometry']['type'] == 'MultiLineString':
+        multi = True
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -159,7 +170,10 @@ def merge_links(a, b, node):
     a['properties']['objectid'] = newobjectid
     a['properties']['fromnodeid'] = newfromnodeid
     a['properties']['tonodeid'] = newtonodeid
-    a['geometry']['coordinates'] = flatten(newc)
+    a['geometry']['coordinates'] = newc
+    if multi:
+        a['geometry']['type'] = "MultiLineString"
+    # a['geometry']['coordinates'] = flatten(newc)
     return a
 
 
@@ -181,11 +195,13 @@ def remove_link(f, t):
 
 def main():
 
+    global newlinks, from_node_links, to_node_links
     all_link_count = 0
     merged_link_count = 0
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.open(linkShapeFile, "r") as fl:
+        print('reading nodes and links')
         for feature in fl:
             all_nodes.append(feature['properties']['fromnodeid'])
             all_nodes.append(feature['properties']['tonodeid'])
@@ -199,6 +215,7 @@ def main():
         c = collections.Counter(all_nodes)
         crossing_nodes = [k for k, v in c.items() if v == 2]
 
+        print('start merging')
         # connlink=2のノードに接続しているリンクを接合する
         with fiona.open(nodeShapeFile, "r") as fn:
             with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
@@ -227,11 +244,11 @@ def main():
                     #     f.write(r)
 
                 except Exception as e:
-                    logging.exception(f"Error writing r {r}:{e}")
+                    logging.exception(f"Error writing :{e}")
 
                 print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
-
+# tokyo elapsed_time: 10814.245[sec]
 if __name__ == '__main__':
     start = time.time()
     main()
