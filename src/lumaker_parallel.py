@@ -29,13 +29,13 @@ nodeShapeFile = base_dir + "minato-ku/minato-node.shp"
 # nodeShapeFile = base_dir + "tokyo/road_node_tokyo.shp"
 
 # new objectid 30,000,000からスタート
-newobjectid = 30000000
+new_id = 30000000
 
 from_node_links = {}
 to_node_links = {}
-crossing_nodes = {}
 newlinks = collections.deque()
 all_nodes = collections.deque()
+merged_link_count = 0
 
 # リンク接合時に値が同一であるべき属性
 checkAttributes = ('roadcls_c', 'navicls_c', 'linkcls_c', 'width_c', 'nopass_c', 'oneway_c', 'lane_count',
@@ -117,7 +117,7 @@ def merge_linstrings(first, second):
 # リンクを接合
 def merge_links(a, b, node):
     # 新しいobjectid
-    global newobjectid
+    global new_id
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -157,8 +157,8 @@ def merge_links(a, b, node):
         newc = merge_linstrings(a, b)
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
-
-    a['properties']['objectid'] = newobjectid
+    new_id = new_id + 1
+    a['properties']['objectid'] = new_id
     a['properties']['fromnodeid'] = newfromnodeid
     a['properties']['tonodeid'] = newtonodeid
     a['geometry']['coordinates'] = flatten(newc)
@@ -181,32 +181,44 @@ def remove_link(f, t):
     newlinks = [x for x in newlinks if not x in (f, t)]
 
 
-def make_lu(feature):
-    global crossing_nodes
-    nodeid = feature['properties']['objectid']
-    if nodeid in crossing_nodes:
-        nodeid = feature['properties']['objectid']
-        from_link, to_link = get_link(nodeid)
-        if check_attributes(from_link, to_link, checkAttributes):
-            remove_link(from_link, to_link)
-            newlink = merge_links(from_link, to_link, nodeid)
-            new_from_node_id = newlink['properties']['fromnodeid']
-            new_to_node_id = newlink['properties']['tonodeid']
-            from_node_links[new_from_node_id] = newlink
-            to_node_links[new_to_node_id] = newlink
-            merged_link_count = merged_link_count + 1
-            return newlink
-        else:
-            return False
-    else:
-        return False
+def find_cross_nodes():
 
+    with fiona.open(linkShapeFile, "r") as fl:
+        print('reading nodes and links')
+        for feature in fl:
+            all_nodes.append(feature['properties']['fromnodeid'])
+            all_nodes.append(feature['properties']['tonodeid'])
+            from_node_id = feature['properties']['fromnodeid']
+            from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+            to_node_id = feature['properties']['tonodeid']
+            to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+            all_link_count = all_link_count + 1
+
+        # 2つのリンクが接続されているノードのobjectid属性を抽出
+        c = collections.Counter(all_nodes)
+        crossing_nodes = [k for k, v in c.items() if v == 2]
+        return crossing_nodes
+
+
+def make_lu(feature, cross_nodes):
+        node_id = feature['properties']['objectid']
+        if node_id in cross_nodes:
+            node_id = feature['properties']['objectid']
+            from_link, to_link = get_link(node_id)
+            if check_attributes(from_link, to_link, checkAttributes):
+                remove_link(from_link, to_link)
+                new_link = merge_links(from_link, to_link, node_id)
+                new_from_node_id = new_link['properties']['fromnodeid']
+                new_to_node_id = new_link['properties']['tonodeid']
+                from_node_links[new_from_node_id] = new_link
+                to_node_links[new_to_node_id] = new_link
+                return new_link
+        return None
 
 def main():
 
-    global newlinks, from_node_links, to_node_links, crossing_nodes
+    global newlinks, from_node_links, to_node_links,  merged_link_count
     all_link_count = 0
-    merged_link_count = 0
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.open(linkShapeFile, "r") as fl:
@@ -224,25 +236,22 @@ def main():
         c = collections.Counter(all_nodes)
         crossing_nodes = [k for k, v in c.items() if v == 2]
 
-        print('start merging')
-        with futures.ProcessPoolExecutor() as executor:
-
+    print('start merging')
+    with futures.ProcessPoolExecutor() as executor:
+        with fiona.open(linkShapeFile, "r") as fl:
             with fiona.open(nodeShapeFile, "r") as fn:
                 with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                    for feature in fn:
-                        result = executor.submit(make_lu, feature)
-                        if result:
-                            newlinks.append(result)
-                    try:
-                        print('start writing')
-                        # f.writerecords(newlinks)
-                        for r in futures.as_completed(newlinks):
-                            f.write(r.result())
+                    for r in executor.map(make_lu(), fn):
+                        try:
+                            print('start writing')
+                            # f.writerecords(newlinks)
+                            print(r)
+                            merged_link_count = merged_link_count + 1
+                                # f.write(r.result())
+                        except Exception as e:
+                            logging.exception(f"Error writing :{e}")
 
-                    except Exception as e:
-                        logging.exception(f"Error writing :{e}")
-
-                    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
+    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
 
 if __name__ == '__main__':
