@@ -1,6 +1,6 @@
 #-*- using:utf-8 -*-
 import collections
-from concurrent import futures
+from multiprocessing import Value, Array, Pool
 import logging
 import sys
 import time
@@ -11,8 +11,8 @@ from shapely.geometry import mapping, shape
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
-base_dir = "C:/ICP/qgis/projects/"
-# base_dir = "C:/qgis/ICP/qgis/projects/"
+# e base_dir = "C:/ICP/qgis/projects/"
+base_dir = "C:/qgis/ICP/qgis/projects/"
 # base_dir = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/"
 
 # Path setting
@@ -118,7 +118,6 @@ def merge_linstrings(first, second):
 def merge_links(a, b, node):
     # 新しいobjectid
     global new_id
-
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
     bNodes = (b['properties']['fromnodeid'], b['properties']['tonodeid'])
@@ -235,21 +234,22 @@ def main():
         # 2つのリンクが接続されているノードのobjectid属性を抽出
         c = collections.Counter(all_nodes)
         crossing_nodes = [k for k, v in c.items() if v == 2]
+        cross_nodes = Array('i', crossing_nodes)
 
     print('start merging')
-    with futures.ProcessPoolExecutor() as executor:
-        with fiona.open(linkShapeFile, "r") as fl:
-            with fiona.open(nodeShapeFile, "r") as fn:
-                with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                    for r in executor.map(make_lu(), fn):
-                        try:
-                            print('start writing')
-                            # f.writerecords(newlinks)
-                            print(r)
-                            merged_link_count = merged_link_count + 1
-                                # f.write(r.result())
-                        except Exception as e:
-                            logging.exception(f"Error writing :{e}")
+    with fiona.open(linkShapeFile, "r") as fl:
+        with fiona.open(nodeShapeFile, "r") as fn:
+            with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
+                with Pool() as pool:
+                    results = pool.map(make_lu, fn, cross_nodes)
+                    try:
+                        print('start writing')
+                        # f.writerecords(newlinks)
+                        print(results)
+                        merged_link_count = merged_link_count + 1
+                            # f.write(r.result())
+                    except Exception as e:
+                        logging.exception(f"Error writing :{e}")
 
     print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
