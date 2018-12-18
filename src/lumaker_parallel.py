@@ -1,7 +1,8 @@
 #-*- using:utf-8 -*-
 import collections
-from multiprocessing import Value, Array, Pool
+from multiprocessing import Value, Array, Pool, Process, Manager
 import logging
+from itertools import repeat
 import sys
 import time
 
@@ -33,7 +34,6 @@ new_id = 30000000
 
 from_node_links = {}
 to_node_links = {}
-newlinks = collections.deque()
 all_nodes = collections.deque()
 merged_link_count = 0
 
@@ -164,7 +164,7 @@ def merge_links(a, b, node):
     return a
 
 
-def get_link(node):
+def get_link(node, from_node_links, to_node_links):
     # 接合対象のリンクを特定し、辞書から削除
     if node in from_node_links.keys():
         f = from_node_links.pop(node)
@@ -175,8 +175,7 @@ def get_link(node):
     return None, None
 
 
-def remove_link(f, t):
-    global newlinks
+def remove_link(f, t, newlinks):
     newlinks = [x for x in newlinks if not x in (f, t)]
 
 
@@ -199,40 +198,64 @@ def find_cross_nodes():
         return crossing_nodes
 
 
-def make_lu(feature):
+def make_lu(feature, cross_nodes, from_node_links, to_node_links, newlinks):
         node_id = feature['properties']['objectid']
         if node_id in cross_nodes:
             node_id = feature['properties']['objectid']
-            from_link, to_link = get_link(node_id)
+            from_link, to_link = get_link(node_id, from_node_links, to_node_links)
             if check_attributes(from_link, to_link, checkAttributes):
-                remove_link(from_link, to_link)
+                remove_link(from_link, to_link, newlinks)
                 new_link = merge_links(from_link, to_link, node_id)
                 new_from_node_id = new_link['properties']['fromnodeid']
                 new_to_node_id = new_link['properties']['tonodeid']
                 from_node_links[new_from_node_id] = new_link
                 to_node_links[new_to_node_id] = new_link
                 return new_link
-        return None
 
 
 def main():
+    global merged_link_count
+    all_link_count = 0
+    with Manager() as m:
+        from_node_links = m.dict()
+        to_node_links = m.dict()
+        cross_nodes = m.list()
+        newlinks = m.list()
+        with fiona.open(linkShapeFile, "r") as fl:
+            print('reading nodes and links')
+            for feature in fl:
+                all_nodes.append(feature['properties']['fromnodeid'])
+                all_nodes.append(feature['properties']['tonodeid'])
+                from_node_id = feature['properties']['fromnodeid']
+                from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+                to_node_id = feature['properties']['tonodeid']
+                to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+                all_link_count = all_link_count + 1
 
-    global newlinks, from_node_links, to_node_links,  merged_link_count
-
-    print('start merging')
-    with fiona.open(linkShapeFile, "r") as fl:
-        with fiona.open(nodeShapeFile, "r") as fn:
-            with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                with Pool() as pool:
-                    results = pool.map(make_lu, fn)
-                    try:
-                        print('start writing')
-                        # f.writerecords(newlinks)
-                        print(results)
-                        merged_link_count = merged_link_count + 1
-                            # f.write(r.result())
-                    except Exception as e:
-                        logging.exception(f"Error writing :{e}")
+            # with Manager() as m:
+            # 2つのリンクが接続されているノードのobjectid属性を抽出
+            c = collections.Counter(all_nodes)
+            # cross_nodes = m.list()
+            cross_nodes = [k for k, v in c.items() if v == 2]
+            print('start merging')
+            with fiona.open(linkShapeFile, "r") as fl:
+                with fiona.open(nodeShapeFile, "r") as fn:
+                    with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
+                            for f in fn:
+                                p = Process(target=make_lu, args=(f, cross_nodes, from_node_links, to_node_links, newlinks))
+                                p.start()
+                                p.join()
+                            try:
+                                print('start writing')
+                                print(p)
+                                # f.writerecords(newlinks)
+                                # newlinks.append(p.result())
+                                # if result is not None:
+                                #     print(p)
+                                #     merged_link_count = merged_link_count + 1
+                                    # f.write(r.result())
+                            except Exception as e:
+                                logging.exception(f"Error writing :{e}")
 
     print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
@@ -240,22 +263,6 @@ def main():
 if __name__ == '__main__':
     start = time.time()
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
-    all_link_count = 0
-    with fiona.open(linkShapeFile, "r") as fl:
-        print('reading nodes and links')
-        for feature in fl:
-            all_nodes.append(feature['properties']['fromnodeid'])
-            all_nodes.append(feature['properties']['tonodeid'])
-            from_node_id = feature['properties']['fromnodeid']
-            from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            to_node_id = feature['properties']['tonodeid']
-            to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            all_link_count = all_link_count + 1
-
-        # 2つのリンクが接続されているノードのobjectid属性を抽出
-        c = collections.Counter(all_nodes)
-        crossing_nodes = [k for k, v in c.items() if v == 2]
-        cross_nodes = Array('i', crossing_nodes)
 
     main()
     elapsed_time = time.time() - start
