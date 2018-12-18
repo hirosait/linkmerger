@@ -28,7 +28,7 @@ linkShapeFile = base_dir + "tokyo/road_link_tokyo.shp"
 nodeShapeFile = base_dir + "tokyo/road_node_tokyo.shp"
 
 # new objectid 30,000,000からスタート
-newobjectid = 30000000
+new_id = 30000000
 
 from_node_links = {}
 to_node_links = {}
@@ -105,7 +105,7 @@ def merge_linstrings(first, second):
         if first_geometry['type'] == 'LineString':
             new_coordinates.append([first_geometry['coordinates']])
         else:
-            new_coordinates.append(first_geometry['coordinates'])
+            new_coordinates.extend(first_geometry['coordinates'])
 
         if second_geometry['type'] == 'LineString':
             new_coordinates.append([second_geometry['coordinates']])
@@ -121,8 +121,13 @@ def merge_linstrings(first, second):
 # リンクを接合
 def merge_links(a, b, node):
     # 新しいobjectid
-    global newobjectid
+    global new_id
     multi = False
+    if a['id'] == '154660' or b['id'] == '154660':
+        print('this')
+    # if a['geometry']['type'] == 'MultiLineString' and b['geometry']['type'] == 'LineString':
+    #     print(a)
+    #     print(b)
     if a['geometry']['type'] == 'MultiLineString':
         multi = True
     if b['geometry']['type'] == 'MultiLineString':
@@ -167,7 +172,7 @@ def merge_links(a, b, node):
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
 
-    a['properties']['objectid'] = newobjectid
+    a['properties']['objectid'] = new_id
     a['properties']['fromnodeid'] = newfromnodeid
     a['properties']['tonodeid'] = newtonodeid
     a['geometry']['coordinates'] = newc
@@ -239,9 +244,10 @@ def main():
                             #     exit()
                 try:
                     print('start writing')
-                    f.writerecords(newlinks)
-                    # for r in newlinks:
-                    #     f.write(r)
+                    # f.writerecords(newlinks)
+                    for r in newlinks:
+                        print(r)
+                        f.write(r)
 
                 except Exception as e:
                     logging.exception(f"Error writing :{e}")
