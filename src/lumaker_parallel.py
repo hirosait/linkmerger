@@ -199,7 +199,7 @@ def find_cross_nodes():
         return crossing_nodes
 
 
-def make_lu(feature, cross_nodes):
+def make_lu(feature):
         node_id = feature['properties']['objectid']
         if node_id in cross_nodes:
             node_id = feature['properties']['objectid']
@@ -214,12 +214,33 @@ def make_lu(feature, cross_nodes):
                 return new_link
         return None
 
+
 def main():
 
     global newlinks, from_node_links, to_node_links,  merged_link_count
-    all_link_count = 0
 
+    print('start merging')
+    with fiona.open(linkShapeFile, "r") as fl:
+        with fiona.open(nodeShapeFile, "r") as fn:
+            with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
+                with Pool() as pool:
+                    results = pool.map(make_lu, fn)
+                    try:
+                        print('start writing')
+                        # f.writerecords(newlinks)
+                        print(results)
+                        merged_link_count = merged_link_count + 1
+                            # f.write(r.result())
+                    except Exception as e:
+                        logging.exception(f"Error writing :{e}")
+
+    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
+
+
+if __name__ == '__main__':
+    start = time.time()
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
+    all_link_count = 0
     with fiona.open(linkShapeFile, "r") as fl:
         print('reading nodes and links')
         for feature in fl:
@@ -235,27 +256,6 @@ def main():
         c = collections.Counter(all_nodes)
         crossing_nodes = [k for k, v in c.items() if v == 2]
         cross_nodes = Array('i', crossing_nodes)
-
-    print('start merging')
-    with fiona.open(linkShapeFile, "r") as fl:
-        with fiona.open(nodeShapeFile, "r") as fn:
-            with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                with Pool() as pool:
-                    results = pool.map(make_lu, fn, cross_nodes)
-                    try:
-                        print('start writing')
-                        # f.writerecords(newlinks)
-                        print(results)
-                        merged_link_count = merged_link_count + 1
-                            # f.write(r.result())
-                    except Exception as e:
-                        logging.exception(f"Error writing :{e}")
-
-    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
-
-
-if __name__ == '__main__':
-    start = time.time()
 
     main()
     elapsed_time = time.time() - start
