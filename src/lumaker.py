@@ -1,6 +1,8 @@
 #-*- using:utf-8 -*-
 import collections
 import logging
+import os
+import pickle
 import sys
 import time
 
@@ -14,21 +16,23 @@ base_dir = "C:/ICP/qgis/projects/"
 # base_dir = "C:/qgis/ICP/qgis/projects/"
 # base_dir = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/"
 
-# Path setting
-#  new link file
-# newLinkShapeFile = base_dir + "minato-ku/minato-link-new.shp"
-newLinkShapeFile = base_dir + "/tokyo/road_link_tokyo_new.shp"
 
-# link shape
-# linkShapeFile = base_dir + "minato-ku/minato-link.shp"
-linkShapeFile = base_dir + "tokyo/road_link_tokyo.shp"
+new_link_file = "minato-ku/minato-link-new.shp"
+# new_link_file = "/tokyo/road_link_tokyo_new.shp"
+link_file = "minato-ku/minato-link.shp"
+# link_file = "tokyo/road_link_tokyo.shp"
+node_file = "minato-ku/minato-node.shp"
+# node_file = "tokyo/road_node_tokyo.shp"
 
-# node shape
-# nodeShapeFile = base_dir + "minato-ku/minato-node.shp"
-nodeShapeFile = base_dir + "tokyo/road_node_tokyo.shp"
+new_link_path = base_dir + new_link_file
+link_path = base_dir + link_file
+node_path = base_dir + node_file
 
 # new objectid 30,000,000からスタート
 new_id = 30000000
+
+# cache dir
+PICKLE_FILE_DIR = base_dir + "cache/"
 
 from_node_links = {}
 to_node_links = {}
@@ -120,6 +124,13 @@ def merge_linstrings(first, second):
 
 # リンクを接合
 def merge_links(a, b, node):
+
+    check_nodes = [1164706, 11566761, 1187139, 11566763, 1164738]
+    if a['properties']['fromnodeid'] in check_nodes or \
+        a['properties']['tonodeid'] in check_nodes or \
+        b['properties']['fromnodeid'] in check_nodes or \
+        b['properties']['tonodeid'] in check_nodes:
+        print('loop')
     # 新しいobjectid
     global new_id
     multi = False
@@ -198,6 +209,25 @@ def remove_link(f, t):
     newlinks = [x for x in newlinks if not x in (f, t)]
 
 
+# pickleにキャシュとして保存
+def save_cache(path, cache):
+    try:
+        with open(path, 'wb') as f:
+            print(f'  Saving pickle file ({path}.pickle)')
+            pickle.dump(cache, f)
+    except PermissionError as e:
+        print(f'Permission Error. skipped {path}.pickle. {e} ')
+
+
+# pickleから読み込み
+def load_cache(path):
+    with open(path, 'rb') as f:
+        try:
+            return pickle.load(f)
+        except PermissionError as e:
+            print(f'Permission Error when loading cache: {path} {e}')
+
+
 def main():
 
     global newlinks, from_node_links, to_node_links
@@ -205,54 +235,61 @@ def main():
     merged_link_count = 0
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
-    with fiona.open(linkShapeFile, "r") as fl:
+    with fiona.open(link_path, "r") as fl:
         print('reading nodes and links')
-        for feature in fl:
-            all_nodes.append(feature['properties']['fromnodeid'])
-            all_nodes.append(feature['properties']['tonodeid'])
-            from_node_id = feature['properties']['fromnodeid']
-            from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            to_node_id = feature['properties']['tonodeid']
-            to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
-            all_link_count = all_link_count + 1
+        pickle_path = os.path.join(PICKLE_FILE_DIR, link_file + ".pickle")
+        if os.path.exists(pickle_path):
+            # キャッシュあれば読み込み
+            print(f'Found pickle file ({os.path.basename(pickle_path)}). loading..')
+            crossing_nodes = load_cache(pickle_path)
+        else:
+            for feature in fl:
+                all_nodes.append(feature['properties']['fromnodeid'])
+                all_nodes.append(feature['properties']['tonodeid'])
+                from_node_id = feature['properties']['fromnodeid']
+                from_node_links[from_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+                to_node_id = feature['properties']['tonodeid']
+                to_node_links[to_node_id] = {'type': 'Feature', 'id': feature['id'], 'properties': feature['properties'], 'geometry': feature['geometry']}
+                all_link_count = all_link_count + 1
 
-        # 2つのリンクが接続されているノードのobjectid属性を抽出
-        c = collections.Counter(all_nodes)
-        crossing_nodes = [k for k, v in c.items() if v == 2]
+            # 2つのリンクが接続されているノードのobjectid属性を抽出
+            c = collections.Counter(all_nodes)
+            crossing_nodes = [k for k, v in c.items() if v == 2]
+            save_cache(pickle_path, crossing_nodes)
 
-        print('start merging')
-        # connlink=2のノードに接続しているリンクを接合する
-        with fiona.open(nodeShapeFile, "r") as fn:
-            with fiona.open(newLinkShapeFile, 'w', **fl.meta) as f:
-                for feature in fn:
-                    nodeid = feature['properties']['objectid']
-                    if nodeid in crossing_nodes:
+            print('start merging')
+            # connlink=2のノードに接続しているリンクを接合する
+            with fiona.open(node_path, "r") as fn:
+                with fiona.open(new_link_path, 'w', **fl.meta) as f:
+                    for feature in fn:
                         nodeid = feature['properties']['objectid']
-                        from_link, to_link = get_link(nodeid)
-                        if check_attributes(from_link, to_link, checkAttributes):
-                            remove_link(from_link, to_link)
-                            newlink = merge_links(from_link, to_link, nodeid)
-                            newlinks.append(newlink)
-                            new_from_node_id = newlink['properties']['fromnodeid']
-                            new_to_node_id = newlink['properties']['tonodeid']
-                            from_node_links[new_from_node_id] = newlink
-                            to_node_links[new_to_node_id] = newlink
-                            merged_link_count = merged_link_count + 1
-                            # print(f"  tolink:{tolink}")
-                            # print(f" newlink:{newlink}")
-                            # if merged_link_count == 500:
-                            #     exit()
-                try:
-                    print('start writing')
-                    # f.writerecords(newlinks)
-                    for r in newlinks:
-                        print(r)
-                        f.write(r)
+                        if nodeid in crossing_nodes:
+                            nodeid = feature['properties']['objectid']
+                            from_link, to_link = get_link(nodeid)
+                            if check_attributes(from_link, to_link, checkAttributes):
+                                remove_link(from_link, to_link)
+                                newlink = merge_links(from_link, to_link, nodeid)
+                                newlinks.append(newlink)
+                                new_from_node_id = newlink['properties']['fromnodeid']
+                                new_to_node_id = newlink['properties']['tonodeid']
+                                from_node_links[new_from_node_id] = newlink
+                                to_node_links[new_to_node_id] = newlink
+                                merged_link_count = merged_link_count + 1
+                                # print(f"  tolink:{tolink}")
+                                # print(f" newlink:{newlink}")
+                                # if merged_link_count == 500:
+                                #     exit()
+                    try:
+                        print('start writing')
+                        # f.writerecords(newlinks)
+                        for r in newlinks:
+                            # print(r)
+                            f.write(r)
 
-                except Exception as e:
-                    logging.exception(f"Error writing :{e}")
+                    except Exception as e:
+                        logging.exception(f"Error writing :{e}")
 
-                print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
+                    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
 # tokyo elapsed_time: 10814.245[sec]
 if __name__ == '__main__':
