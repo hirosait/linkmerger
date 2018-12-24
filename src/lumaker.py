@@ -236,12 +236,13 @@ def main():
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.open(link_path, "r") as fl:
+
         print('reading nodes and links')
         pickle_path = os.path.join(PICKLE_FILE_DIR, link_file + ".pickle")
         if os.path.exists(pickle_path):
             # キャッシュあれば読み込み
             print(f'Found pickle file ({os.path.basename(pickle_path)}). loading..')
-            crossing_nodes = load_cache(pickle_path)
+            crossing_nodes, from_node_links, to_node_links = load_cache(pickle_path)
         else:
             for feature in fl:
                 all_nodes.append(feature['properties']['fromnodeid'])
@@ -255,41 +256,41 @@ def main():
             # 2つのリンクが接続されているノードのobjectid属性を抽出
             c = collections.Counter(all_nodes)
             crossing_nodes = [k for k, v in c.items() if v == 2]
-            save_cache(pickle_path, crossing_nodes)
+            save_cache(pickle_path, (crossing_nodes, from_node_links, to_node_links))
 
-            print('start merging')
-            # connlink=2のノードに接続しているリンクを接合する
-            with fiona.open(node_path, "r") as fn:
-                with fiona.open(new_link_path, 'w', **fl.meta) as f:
-                    for feature in fn:
+        print('start merging')
+        # connlink=2のノードに接続しているリンクを接合する
+        with fiona.open(node_path, "r") as fn:
+            with fiona.open(new_link_path, 'w', **fl.meta) as f:
+                for feature in fn:
+                    nodeid = feature['properties']['objectid']
+                    if nodeid in crossing_nodes:
                         nodeid = feature['properties']['objectid']
-                        if nodeid in crossing_nodes:
-                            nodeid = feature['properties']['objectid']
-                            from_link, to_link = get_link(nodeid)
-                            if check_attributes(from_link, to_link, checkAttributes):
-                                remove_link(from_link, to_link)
-                                newlink = merge_links(from_link, to_link, nodeid)
-                                newlinks.append(newlink)
-                                new_from_node_id = newlink['properties']['fromnodeid']
-                                new_to_node_id = newlink['properties']['tonodeid']
-                                from_node_links[new_from_node_id] = newlink
-                                to_node_links[new_to_node_id] = newlink
-                                merged_link_count = merged_link_count + 1
-                                # print(f"  tolink:{tolink}")
-                                # print(f" newlink:{newlink}")
-                                # if merged_link_count == 500:
-                                #     exit()
-                    try:
-                        print('start writing')
-                        # f.writerecords(newlinks)
-                        for r in newlinks:
-                            # print(r)
-                            f.write(r)
+                        from_link, to_link = get_link(nodeid)
+                        if check_attributes(from_link, to_link, checkAttributes):
+                            remove_link(from_link, to_link)
+                            newlink = merge_links(from_link, to_link, nodeid)
+                            newlinks.append(newlink)
+                            new_from_node_id = newlink['properties']['fromnodeid']
+                            new_to_node_id = newlink['properties']['tonodeid']
+                            from_node_links[new_from_node_id] = newlink
+                            to_node_links[new_to_node_id] = newlink
+                            merged_link_count = merged_link_count + 1
+                            # print(f"  tolink:{tolink}")
+                            # print(f" newlink:{newlink}")
+                            # if merged_link_count == 500:
+                            #     exit()
+                try:
+                    print('start writing')
+                    # f.writerecords(newlinks)
+                    for r in newlinks:
+                        # print(r)
+                        f.write(r)
 
-                    except Exception as e:
-                        logging.exception(f"Error writing :{e}")
+                except Exception as e:
+                    logging.exception(f"Error writing :{e}")
 
-                    print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
+                print(f"Finished.  All Links counts: {all_link_count}, Generated LUs: {merged_link_count}")
 
 # tokyo elapsed_time: 10814.245[sec]
 if __name__ == '__main__':
