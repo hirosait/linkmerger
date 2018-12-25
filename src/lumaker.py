@@ -98,47 +98,60 @@ def flatten(nested_list):
 
 
 # ジオメトリLineStringを結合し、MultiLineStringにする
-def merge_linstrings(first, second):
+def merge_linestrings(first, second):
 
     new_coordinates = []
 
     first_geometry = first['geometry']
     second_geometry = second['geometry']
 
-    if first_geometry['type'] == 'MultiLineString' or second_geometry['type'] == 'MultiLineString':
-        if first_geometry['type'] == 'LineString':
-            new_coordinates.append([first_geometry['coordinates']])
-        else:
-            new_coordinates.extend(first_geometry['coordinates'])
-
-        if second_geometry['type'] == 'LineString':
-            new_coordinates.append([second_geometry['coordinates']])
-        else:
-            new_coordinates.append(second_geometry['coordinates'])
+    geom = []
+    if first_geometry['type'] == 'MultiLineString' and isinstance(first_geometry['coordinates'][0], list):
+        for parent in first_geometry['coordinates']:
+            for child in parent:
+                geom.append(shape(child))
     else:
-        new_coordinates.extend(first_geometry['coordinates'])
-        new_coordinates.extend(second_geometry['coordinates'])
+        for parent in first_geometry['coordinates']:
+            geom.append(shape(parent))
 
-    return new_coordinates
+    if second_geometry['type'] == 'MultiLineString' and isinstance(second_geometry['coordinates'][0], list):
+        for parent in second_geometry['coordinates']:
+            for child in parent:
+                geom.append(shape(child))
+    else:
+        for parent in second_geometry['coordinates']:
+            geom.append(shape(parent))
+
+    return geom
+    # if first_geometry['type'] == 'MultiLineString' or second_geometry['type'] == 'MultiLineString':
+    #     if first_geometry['type'] == 'LineString':
+    #         new_coordinates.append([first_geometry['coordinates']])
+    #     else:
+    #         new_coordinates.extend(first_geometry['coordinates'])
+    #
+    #     if second_geometry['type'] == 'LineString':
+    #         new_coordinates.append([second_geometry['coordinates']])
+    #     else:
+    #         new_coordinates.append(second_geometry['coordinates'])
+    # else:
+    #     new_coordinates.extend(first_geometry['coordinates'])
+    #     new_coordinates.extend(second_geometry['coordinates'])
+
+    # return new_coordinates
 
 
 # リンクを接合
 def merge_links(a, b, node):
-    if a['id']  == '154660' or b['id'] == '154660':
-        print('here')
 
     # 新しいobjectid
     global new_id
     multi = False
-    if a['id'] == '154660' or b['id'] == '154660':
-        print('this')
-    # if a['geometry']['type'] == 'MultiLineString' and b['geometry']['type'] == 'LineString':
-    #     print(a)
-    #     print(b)
     if a['geometry']['type'] == 'MultiLineString':
         multi = True
-    # if b['geometry']['type'] == 'MultiLineString':
-    #     multi = True
+        print(a)
+    if b['geometry']['type'] == 'MultiLineString':
+        multi = True
+        print(b)
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -155,7 +168,7 @@ def merge_links(a, b, node):
         a = reverse_link(a)
         bc.reverse()
         # shape
-        newc = merge_linstrings(b, a)
+        newc = merge_linestrings(b, a)
         # from, to
         newfromnodeid = aNodes[1]
         newtonodeid = bNodes[1]
@@ -164,18 +177,18 @@ def merge_links(a, b, node):
     elif aNodePos == 1 and bNodePos == 0:
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[1]
-        newc = merge_linstrings(a, b)
+        newc = merge_linestrings(a, b)
     # <-a- n <-b- => or -b-> n -a-> keep
     elif aNodePos == 0 and bNodePos == 1:
         newfromnodeid = bNodes[0]
         newtonodeid = aNodes[1]
-        newc = merge_linstrings(b, a)
+        newc = merge_linestrings(b, a)
     # -a-> n <-b-  =>  -a-> n -b->
     elif aNodePos == 1 and bNodePos == 1:
         b = reverse_link(b)
         bc.reverse()
         # shape
-        newc = merge_linstrings(a, b)
+        newc = merge_linestrings(a, b)
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
 
@@ -232,7 +245,7 @@ def main():
 
     # リンクレイヤからfromnodeid, tonodeid を取得し、Dict[objectid] 形式で辞書化　
     with fiona.open(link_path, "r") as fl:
-
+        schema = fl.schema.copy()
         print('reading nodes and links')
         pickle_path = os.path.join(PICKLE_FILE_DIR, link_file + ".pickle")
         if os.path.exists(pickle_path):
