@@ -124,13 +124,9 @@ def merge_linstrings(first, second):
 
 # リンクを接合
 def merge_links(a, b, node):
+    if a['id']  == '154660' or b['id'] == '154660':
+        print('here')
 
-    check_nodes = [1164706, 11566761, 1187139, 11566763, 1164738]
-    if a['properties']['fromnodeid'] in check_nodes or \
-        a['properties']['tonodeid'] in check_nodes or \
-        b['properties']['fromnodeid'] in check_nodes or \
-        b['properties']['tonodeid'] in check_nodes:
-        print('loop')
     # 新しいobjectid
     global new_id
     multi = False
@@ -141,8 +137,8 @@ def merge_links(a, b, node):
     #     print(b)
     if a['geometry']['type'] == 'MultiLineString':
         multi = True
-    if b['geometry']['type'] == 'MultiLineString':
-        multi = True
+    # if b['geometry']['type'] == 'MultiLineString':
+    #     multi = True
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -188,8 +184,8 @@ def merge_links(a, b, node):
     a['properties']['tonodeid'] = newtonodeid
     a['geometry']['coordinates'] = newc
     if multi:
-        a['geometry']['type'] = "MultiLineString"
-    # a['geometry']['coordinates'] = flatten(newc)
+        a['geometry']['type'] = "LineString"
+        a['geometry']['coordinates'] = flatten(newc)
     return a
 
 
@@ -284,7 +280,7 @@ def main():
                     print('start writing')
                     # f.writerecords(newlinks)
                     for r in newlinks:
-                        # print(r)
+                        print(r)
                         f.write(r)
 
                 except Exception as e:
