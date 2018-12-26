@@ -7,22 +7,27 @@ import sys
 import time
 
 import fiona
-from shapely.geometry import mapping, shape
+from shapely import geometry, ops
 # import numpy as np
 
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 
-base_dir = "C:/ICP/qgis/projects/"
-# base_dir = "C:/qgis/ICP/qgis/projects/"
+# base_dir = "C:/ICP/qgis/projects/"
+base_dir = "C:/qgis/ICP/qgis/projects/"
 # base_dir = "/Users/HirokiSaitoRMC/home/QGIS/project/ICP/qgis/projects/"
 
 
-new_link_file = "minato-ku/minato-link-new.shp"
-# new_link_file = "/tokyo/road_link_tokyo_new.shp"
-link_file = "minato-ku/minato-link.shp"
-# link_file = "tokyo/road_link_tokyo.shp"
-node_file = "minato-ku/minato-node.shp"
-# node_file = "tokyo/road_node_tokyo.shp"
+# new_link_file = "minato-ku/minato-link-new.shp"
+# new_link_file = "ohta-ku/road_link_ohta-ku_new.shp"
+new_link_file = "/tokyo/road_link_tokyo_new.shp"
+
+# link_file = "minato-ku/minato-link.shp"
+link_file = "tokyo/road_link_tokyo.shp"
+# link_file = "ohta-ku/road_link_ohta-ku.shp"
+
+# node_file = "minato-ku/minato-node.shp"
+node_file = "tokyo/road_node_tokyo.shp"
+# node_file = "ohta-ku/road_node_ohta-ku.shp"
 
 new_link_path = base_dir + new_link_file
 link_path = base_dir + link_file
@@ -105,24 +110,26 @@ def merge_linestrings(first, second):
     first_geometry = first['geometry']
     second_geometry = second['geometry']
 
-    geom = []
-    if first_geometry['type'] == 'MultiLineString' and isinstance(first_geometry['coordinates'][0], list):
-        for parent in first_geometry['coordinates']:
-            for child in parent:
-                geom.append(shape(child))
+    f_lines = []
+    if first_geometry['type'] == 'MultiLineString':
+        first = geometry.MultiLineString(first_geometry['coordinates'])
+        for f in first:
+            f_lines.append(f)
+        # f_lines = ops.linemerge(first)
     else:
-        for parent in first_geometry['coordinates']:
-            geom.append(shape(parent))
+        f_lines.append(geometry.LineString(first_geometry['coordinates']))
 
-    if second_geometry['type'] == 'MultiLineString' and isinstance(second_geometry['coordinates'][0], list):
-        for parent in second_geometry['coordinates']:
-            for child in parent:
-                geom.append(shape(child))
+    if second_geometry['type'] == 'MultiLineString':
+        second =  geometry.MultiLineString(second_geometry['coordinates'])
+        for s in second:
+            f_lines.append(s)
+        # s_lines = ops.linemerge(second)
     else:
-        for parent in second_geometry['coordinates']:
-            geom.append(shape(parent))
+        f_lines.append(geometry.LineString(second_geometry['coordinates']))
 
-    return geom
+    merged_multiline = geometry.MultiLineString(f_lines)
+    linestring = ops.linemerge(merged_multiline)
+    return linestring
     # if first_geometry['type'] == 'MultiLineString' or second_geometry['type'] == 'MultiLineString':
     #     if first_geometry['type'] == 'LineString':
     #         new_coordinates.append([first_geometry['coordinates']])
@@ -136,7 +143,7 @@ def merge_linestrings(first, second):
     # else:
     #     new_coordinates.extend(first_geometry['coordinates'])
     #     new_coordinates.extend(second_geometry['coordinates'])
-
+    #
     # return new_coordinates
 
 
@@ -146,12 +153,12 @@ def merge_links(a, b, node):
     # 新しいobjectid
     global new_id
     multi = False
-    if a['geometry']['type'] == 'MultiLineString':
-        multi = True
-        print(a)
-    if b['geometry']['type'] == 'MultiLineString':
-        multi = True
-        print(b)
+    # if a['geometry']['type'] == 'MultiLineString':
+    #     multi = True
+    # print(a)
+    # if b['geometry']['type'] == 'MultiLineString':
+    #     multi = True
+    # print(b)
 
     # ノードの位置を特定
     aNodes = (a['properties']['fromnodeid'], a['properties']['tonodeid'])
@@ -191,14 +198,14 @@ def merge_links(a, b, node):
         newc = merge_linestrings(a, b)
         newfromnodeid = aNodes[0]
         newtonodeid = bNodes[0]
-
+    new_id = new_id + 1
     a['properties']['objectid'] = new_id
     a['properties']['fromnodeid'] = newfromnodeid
     a['properties']['tonodeid'] = newtonodeid
-    a['geometry']['coordinates'] = newc
+    a['geometry'] = geometry.mapping(newc)
     if multi:
-        a['geometry']['type'] = "LineString"
-        a['geometry']['coordinates'] = flatten(newc)
+        a['geometry']['type'] = "MultiLineString"
+        # a['geometry']['coordinates'] = flatten(newc)
     return a
 
 
@@ -293,7 +300,7 @@ def main():
                     print('start writing')
                     # f.writerecords(newlinks)
                     for r in newlinks:
-                        print(r)
+                        # print(r)
                         f.write(r)
 
                 except Exception as e:
